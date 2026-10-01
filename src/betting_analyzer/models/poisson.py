@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.stats import poisson
 
-from betting_analyzer.clients.football_data import MatchResult
+from betting_analyzer.types import MatchResult
 
 MAX_GOALS = 10
 

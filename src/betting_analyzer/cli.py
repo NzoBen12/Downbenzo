@@ -1,10 +1,11 @@
 """CLI del analizador de apuestas.
 
 Flujo típico:
-  1. Trae resultados históricos de una competición (football-data.org) y construye ratings.
-  2. Trae cuotas en vivo de los próximos partidos (the-odds-api.com).
-  3. Para cada partido con cuotas y datos históricos de ambos equipos, predice 1X2 con Poisson
-     y lo compara contra las cuotas para señalar value bets.
+  1. `leagues --country X` para encontrar el league_id/temporada real de una liga en API-Football.
+  2. `analyze --league-id ID --season YYYY` para predecir los próximos partidos de esa liga con
+     Poisson y compararlos contra las cuotas de la misma API, señalando value bets.
+  3. `focus` para correr `analyze` sobre todas las ligas configuradas en `leagues.py` (una vez
+     que tengan league_id/season reales en lugar de los placeholders).
 """
 
 from __future__ import annotations
@@ -12,38 +13,61 @@ from __future__ import annotations
 import click
 
 from betting_analyzer.analysis.value import find_value_bets
-from betting_analyzer.clients.football_data import FootballDataClient
-from betting_analyzer.clients.odds_api import OddsApiClient
+from betting_analyzer.clients.api_football import ApiFootballClient
+from betting_analyzer.leagues import FOCUS_LEAGUES
 from betting_analyzer.models.poisson import build_league_ratings, predict_match
 
 
 @click.group()
 def main() -> None:
-    """Analizador de apuestas: predicción Poisson + detección de value bets."""
+    """Analizador de apuestas: predicción Poisson + detección de value bets, vía API-Football."""
 
 
-@main.command("sports")
-def list_sports() -> None:
-    """Lista los deportes/ligas disponibles en The Odds API."""
-    client = OddsApiClient()
-    for sport in client.list_sports():
-        click.echo(f"{sport['key']:35s} {sport['title']}")
+@main.command("leagues")
+@click.option("--country", required=True, help="Nombre de país tal como lo reconoce API-Football (ej. 'Norway', 'Kenya').")
+def list_leagues(country: str) -> None:
+    """Busca ligas/copas de un país en API-Football, con su league_id y temporada actual."""
+    for league in ApiFootballClient().search_leagues(country):
+        season = league.current_season if league.current_season is not None else "?"
+        click.echo(f"id={league.league_id:<6} season={season!s:<6} [{league.league_type}] {league.name} ({league.country})")
 
 
 @main.command("analyze")
-@click.option("--competition", required=True, help="Código de competición en football-data.org (ej. PL, PD, SA).")
-@click.option("--sport-key", required=True, help="Clave de deporte/liga en The Odds API (ej. soccer_epl).")
-@click.option("--season", type=int, default=None, help="Temporada para los históricos (ej. 2023).")
+@click.option("--league-id", type=int, required=True, help="league_id de API-Football (ver comando 'leagues').")
+@click.option("--season", type=int, required=True, help="Temporada (ej. 2024).")
 @click.option("--min-edge", type=float, default=0.02, help="Edge mínimo para marcar una apuesta como 'de valor'.")
-def analyze(competition: str, sport_key: str, season: int | None, min_edge: float) -> None:
-    """Predice próximos partidos y señala value bets comparando contra cuotas reales."""
-    click.echo(f"Descargando históricos de '{competition}'...")
-    matches = FootballDataClient().get_finished_matches(competition, season=season)
+def analyze(league_id: int, season: int, min_edge: float) -> None:
+    """Predice próximos partidos de una liga y señala value bets comparando contra cuotas reales."""
+    client = ApiFootballClient()
+    _analyze_league(client, league_id=league_id, season=season, min_edge=min_edge, label=f"league_id={league_id}")
+
+
+@main.command("focus")
+@click.option("--min-edge", type=float, default=0.02, help="Edge mínimo para marcar una apuesta como 'de valor'.")
+def focus(min_edge: float) -> None:
+    """Corre 'analyze' sobre todas las ligas configuradas en leagues.py."""
+    client = ApiFootballClient()
+    pending = [fl for fl in FOCUS_LEAGUES if fl.league_id is None]
+    for fl in pending:
+        click.echo(f"[omitido] {fl.label}: falta configurar league_id/season (usa 'leagues --country {fl.country}').")
+
+    for fl in FOCUS_LEAGUES:
+        if fl.league_id is None or fl.season is None:
+            continue
+        click.echo(f"\n=== {fl.label} ===")
+        _analyze_league(client, league_id=fl.league_id, season=fl.season, min_edge=min_edge, label=fl.label)
+
+
+def _analyze_league(client: ApiFootballClient, *, league_id: int, season: int, min_edge: float, label: str) -> None:
+    click.echo(f"Descargando históricos de '{label}' (league_id={league_id}, season={season})...")
+    matches = client.get_finished_fixtures(league_id, season)
+    if not matches:
+        click.echo("  Sin partidos finalizados para esta liga/temporada. Nada que analizar.")
+        return
     click.echo(f"  {len(matches)} partidos finalizados encontrados. Construyendo ratings...")
     ratings = build_league_ratings(matches)
 
-    click.echo(f"Descargando cuotas en vivo de '{sport_key}'...")
-    upcoming = OddsApiClient().get_h2h_odds(sport_key)
+    upcoming = client.get_h2h_odds(league_id, season)
     click.echo(f"  {len(upcoming)} próximos partidos con cuotas.")
 
     any_analyzed = False
@@ -60,10 +84,11 @@ def analyze(competition: str, sport_key: str, season: int | None, min_edge: floa
             "draw": prediction.draw_prob,
             "away": prediction.away_win_prob,
         }
+        # API-Football usa "Home"/"Draw"/"Away" como nombres de resultado en el mercado Match Winner.
         market_odds = {
-            "home": event.best_price(event.home_team),
-            "away": event.best_price(event.away_team),
+            "home": event.best_price("Home"),
             "draw": event.best_price("Draw"),
+            "away": event.best_price("Away"),
         }
         market_odds = {k: v for k, v in market_odds.items() if v is not None}
 
@@ -84,10 +109,10 @@ def analyze(competition: str, sport_key: str, season: int | None, min_edge: floa
                 f"edge +{vb.edge:.1%}  EV/unidad {vb.expected_value:+.3f}"
             )
 
-    if not any_analyzed:
+    if not any_analyzed and upcoming:
         click.echo(
-            "\nNingún partido pudo analizarse: revisa que los nombres de equipo de "
-            "football-data.org y The Odds API coincidan para esta liga."
+            "\nNingún partido pudo analizarse: los equipos de los próximos partidos no tienen "
+            "historial en los partidos finalizados descargados."
         )
 
 

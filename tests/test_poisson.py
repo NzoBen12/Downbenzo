@@ -1,6 +1,6 @@
 import pytest
 
-from betting_analyzer.clients.football_data import MatchResult
+from betting_analyzer.types import MatchResult
 from betting_analyzer.models.poisson import build_league_ratings, predict_match
 
 
