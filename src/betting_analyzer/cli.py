@@ -1,11 +1,21 @@
 """CLI del analizador de apuestas.
 
-Flujo típico:
-  1. `leagues --country X` para encontrar el league_id/temporada real de una liga en API-Football.
-  2. `analyze --league-id ID --season YYYY` para predecir los próximos partidos de esa liga con
-     Poisson y compararlos contra las cuotas de la misma API, señalando value bets.
-  3. `focus` para correr `analyze` sobre todas las ligas configuradas en `leagues.py` (una vez
-     que tengan league_id/season reales en lugar de los placeholders).
+IMPORTANTE (plan Free de API-Football, confirmado en vivo):
+  - Solo da acceso a temporadas 2022-2024, nunca a la temporada en curso.
+  - El endpoint de cuotas (/odds) devuelve 0 resultados siempre, incluso en Premier League.
+  Conclusión: con este plan NO se pueden traer próximos partidos reales ni cuotas reales, así
+  que `analyze`/`focus` (pensados para eso) no van a encontrar nada útil por ahora. Lo que sí
+  funciona hoy es `predict`: predicción Poisson de un enfrentamiento hipotético entre dos
+  equipos de una liga, usando sus históricos 2022-2024 como base.
+
+Flujo recomendado mientras el plan sea Free:
+  1. `leagues --country X` para encontrar el league_id de una liga en API-Football.
+  2. `predict --league-id ID --season 2023 --home "Equipo A" --away "Equipo B"` para ver las
+     probabilidades 1X2 y los goles esperados de ese enfrentamiento.
+
+Flujo original (cuando haya un plan con temporada actual + cuotas):
+  `analyze --league-id ID --season YYYY` y `focus` comparan la predicción contra cuotas reales
+  de los próximos partidos y señalan value bets.
 """
 
 from __future__ import annotations
@@ -32,6 +42,40 @@ def list_leagues(country: str) -> None:
         click.echo(f"id={league.league_id:<6} season={season!s:<6} [{league.league_type}] {league.name} ({league.country})")
 
 
+@main.command("predict")
+@click.option("--league-id", type=int, required=True, help="league_id de API-Football (ver comando 'leagues').")
+@click.option("--season", type=int, required=True, help="Temporada de históricos a usar (2022-2024 en el plan Free).")
+@click.option("--home", required=True, help="Nombre del equipo local, tal como aparece en API-Football.")
+@click.option("--away", required=True, help="Nombre del equipo visitante, tal como aparece en API-Football.")
+def predict(league_id: int, season: int, home: str, away: str) -> None:
+    """Predice un enfrentamiento hipotético entre dos equipos usando sus históricos de una liga/temporada."""
+    client = ApiFootballClient()
+    click.echo(f"Descargando históricos de league_id={league_id}, season={season}...")
+    matches = client.get_finished_fixtures(league_id, season)
+    if not matches:
+        click.echo("Sin partidos finalizados para esta liga/temporada.")
+        return
+    click.echo(f"  {len(matches)} partidos finalizados. Construyendo ratings...")
+    ratings = build_league_ratings(matches)
+
+    try:
+        prediction = predict_match(ratings, home, away)
+    except KeyError as exc:
+        click.echo(f"\n{exc}")
+        teams = ", ".join(sorted(ratings.teams))
+        click.echo(f"\nEquipos disponibles en esta liga/temporada:\n  {teams}")
+        return
+
+    click.echo(f"\n{home} vs {away}")
+    click.echo(
+        f"  Modelo -> local {prediction.home_win_prob:.1%} | empate {prediction.draw_prob:.1%} | "
+        f"visita {prediction.away_win_prob:.1%}  "
+        f"(xG: {prediction.expected_home_goals:.2f} - {prediction.expected_away_goals:.2f})"
+    )
+    over, under = prediction.over_under_prob(2.5)
+    click.echo(f"  Over/Under 2.5 goles -> over {over:.1%} | under {under:.1%}")
+
+
 @main.command("analyze")
 @click.option("--league-id", type=int, required=True, help="league_id de API-Football (ver comando 'leagues').")
 @click.option("--season", type=int, required=True, help="Temporada (ej. 2024).")
@@ -43,9 +87,12 @@ def analyze(league_id: int, season: int, min_edge: float) -> None:
 
 
 @main.command("focus")
-@click.option("--min-edge", type=float, default=0.02, help="Edge mínimo para marcar una apuesta como 'de valor'.")
-def focus(min_edge: float) -> None:
-    """Corre 'analyze' sobre todas las ligas configuradas en leagues.py."""
+def focus() -> None:
+    """Construye ratings para todas las ligas configuradas en leagues.py y lista sus equipos.
+
+    Con el plan Free (sin temporada actual ni cuotas) esto es lo útil hoy: confirma que cada
+    liga foco tiene históricos reales y deja los equipos listos para usar con `predict`.
+    """
     client = ApiFootballClient()
     pending = [fl for fl in FOCUS_LEAGUES if fl.league_id is None]
     for fl in pending:
@@ -54,8 +101,14 @@ def focus(min_edge: float) -> None:
     for fl in FOCUS_LEAGUES:
         if fl.league_id is None or fl.season is None:
             continue
-        click.echo(f"\n=== {fl.label} ===")
-        _analyze_league(client, league_id=fl.league_id, season=fl.season, min_edge=min_edge, label=fl.label)
+        click.echo(f"\n=== {fl.label} (league_id={fl.league_id}, season={fl.season}) ===")
+        matches = client.get_finished_fixtures(fl.league_id, fl.season)
+        if not matches:
+            click.echo("  Sin partidos finalizados. Nada que construir.")
+            continue
+        ratings = build_league_ratings(matches)
+        click.echo(f"  {len(matches)} partidos, {len(ratings.teams)} equipos:")
+        click.echo(f"  {', '.join(sorted(ratings.teams))}")
 
 
 def _analyze_league(client: ApiFootballClient, *, league_id: int, season: int, min_edge: float, label: str) -> None:
