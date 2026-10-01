@@ -1,0 +1,28 @@
+[project]
+name = "betting-analyzer"
+version = "0.1.0"
+description = "Analizador de apuestas deportivas: predice resultados con un modelo de Poisson y lo compara contra cuotas reales para encontrar value bets."
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "python-dotenv>=1.0",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+]
+
+[project.scripts]
+betting-analyzer = "betting_analyzer.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
