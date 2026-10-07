@@ -1,0 +1,425 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DataOrigin {
+  USER
+  DEMO
+  SOURCE_SNAPSHOT
+}
+
+enum VisitStatus {
+  PLANNED
+  SUCCESSFUL
+  UNSUCCESSFUL
+  DEFERRED
+  CANCELLED
+}
+
+enum ProspectStatus {
+  NEW
+  IN_FOLLOW_UP
+  CONVERTED
+  LOST
+}
+
+enum CurrencyOperationStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum LotStatus {
+  CREATED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum CardStatus {
+  IN_STOCK
+  DISTRIBUTED
+  ACTIVE
+  BLOCKED
+  CANCELLED
+}
+
+enum CardMovementType {
+  ENTRY
+  DISTRIBUTION
+  ACTIVATION
+  BLOCK
+  CANCELLATION
+}
+
+enum GoalStatus {
+  OPEN
+  ACHIEVED
+  MISSED
+}
+
+enum ActionStatus {
+  PENDING
+  DONE
+  CANCELLED
+}
+
+enum AuditResult {
+  SUCCESS
+  FAILURE
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  code        String           @unique
+  description String
+  roles       RolePermission[]
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  code        String           @unique
+  name        String
+  description String?
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  permissions RolePermission[]
+  users       User[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  username       String    @unique
+  fullName       String
+  passwordHash   String?
+  externalId     String?   @unique
+  roleId         String
+  role           Role      @relation(fields: [roleId], references: [id])
+  agencyId       String?
+  agency         Agency?   @relation(fields: [agencyId], references: [id])
+  isActive       Boolean   @default(true)
+  isBlocked      Boolean   @default(false)
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  tokenVersion   Int       @default(0)
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  manager        Manager?
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+
+  @@index([roleId])
+  @@index([agencyId])
+}
+
+model Agency {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  name      String
+  city      String?
+  address   String?
+  phone     String?
+  isActive  Boolean    @default(true)
+  origin    DataOrigin @default(USER)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
+  managers  Manager[]
+  users     User[]
+  visits    Visit[]
+  currencyOperations CurrencyOperation[]
+  lots      Lot[]
+  cards     Card[]
+  sales     ProductSale[]
+  goals     Goal[]
+
+  @@index([isActive])
+  @@index([name])
+}
+
+model Manager {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  fullName  String
+  email     String?
+  phone     String?
+  agencyId  String
+  agency    Agency     @relation(fields: [agencyId], references: [id])
+  userId    String?    @unique
+  user      User?      @relation(fields: [userId], references: [id])
+  isActive  Boolean    @default(true)
+  origin    DataOrigin @default(USER)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
+  visits    Visit[]
+  sales     ProductSale[]
+  goals     Goal[]
+  actions   Action[]
+  currencyOperations CurrencyOperation[]
+
+  @@index([agencyId])
+  @@index([isActive])
+}
+
+model Customer {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  fullName  String
+  email     String?
+  phone     String?
+  origin    DataOrigin @default(USER)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  visits    Visit[]
+  sales     ProductSale[]
+  currencyOperations CurrencyOperation[]
+}
+
+model Prospect {
+  id          String         @id @default(cuid())
+  fullName    String
+  email       String?
+  phone       String?
+  city        String?
+  interests   String[]
+  status      ProspectStatus @default(NEW)
+  notes       String?
+  origin      DataOrigin     @default(USER)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  deletedAt   DateTime?
+  visits      Visit[]
+
+  @@index([status])
+  @@index([fullName])
+}
+
+model Visit {
+  id          String      @id @default(cuid())
+  scheduledAt DateTime
+  status      VisitStatus @default(PLANNED)
+  result      String?
+  notes       String?
+  agencyId    String
+  agency      Agency      @relation(fields: [agencyId], references: [id])
+  managerId   String
+  manager     Manager     @relation(fields: [managerId], references: [id])
+  prospectId  String?
+  prospect    Prospect?   @relation(fields: [prospectId], references: [id])
+  customerId  String?
+  customer    Customer?   @relation(fields: [customerId], references: [id])
+  origin      DataOrigin  @default(USER)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+  sales       ProductSale[]
+
+  @@index([scheduledAt])
+  @@index([status])
+  @@index([agencyId, scheduledAt])
+  @@index([managerId, scheduledAt])
+  @@index([prospectId])
+}
+
+model Product {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  name      String
+  isDelta   Boolean    @default(false)
+  isActive  Boolean    @default(true)
+  origin    DataOrigin @default(USER)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  sales     ProductSale[]
+  goals     Goal[]
+}
+
+model ProductSale {
+  id         String     @id @default(cuid())
+  productId  String
+  product    Product    @relation(fields: [productId], references: [id])
+  agencyId   String
+  agency     Agency     @relation(fields: [agencyId], references: [id])
+  managerId  String
+  manager    Manager    @relation(fields: [managerId], references: [id])
+  visitId    String?
+  visit      Visit?     @relation(fields: [visitId], references: [id])
+  customerId String?
+  customer   Customer?  @relation(fields: [customerId], references: [id])
+  sold       Boolean    @default(true)
+  amount     Decimal    @default(0) @db.Decimal(18, 2)
+  soldAt     DateTime
+  origin     DataOrigin @default(USER)
+  createdAt  DateTime   @default(now())
+
+  @@index([soldAt])
+  @@index([productId, soldAt])
+  @@index([agencyId, soldAt])
+  @@index([managerId, soldAt])
+}
+
+model Goal {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  targetValue Decimal    @db.Decimal(18, 2)
+  currentValue Decimal   @default(0) @db.Decimal(18, 2)
+  periodStart DateTime
+  periodEnd   DateTime
+  status      GoalStatus @default(OPEN)
+  agencyId    String?
+  agency      Agency?    @relation(fields: [agencyId], references: [id])
+  managerId   String?
+  manager     Manager?   @relation(fields: [managerId], references: [id])
+  productId   String?
+  product     Product?   @relation(fields: [productId], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([periodStart, periodEnd])
+}
+
+model Action {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  dueDate     DateTime?
+  status      ActionStatus @default(PENDING)
+  managerId   String?
+  manager     Manager?     @relation(fields: [managerId], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([status, dueDate])
+}
+
+model CurrencyOperation {
+  id         String                  @id @default(cuid())
+  operatedAt DateTime
+  currency   String                  @db.VarChar(3)
+  amount     Decimal                 @db.Decimal(18, 2)
+  rate       Decimal?                @db.Decimal(18, 6)
+  status     CurrencyOperationStatus @default(PENDING)
+  agencyId   String
+  agency     Agency                  @relation(fields: [agencyId], references: [id])
+  managerId  String?
+  manager    Manager?                @relation(fields: [managerId], references: [id])
+  customerId String?
+  customer   Customer?               @relation(fields: [customerId], references: [id])
+  origin     DataOrigin              @default(USER)
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+
+  @@index([operatedAt])
+  @@index([agencyId, operatedAt])
+  @@index([currency])
+  @@index([status])
+}
+
+model Lot {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  quantity  Int
+  status    LotStatus  @default(CREATED)
+  agencyId  String
+  agency    Agency     @relation(fields: [agencyId], references: [id])
+  notes     String?
+  origin    DataOrigin @default(USER)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  cards     Card[]
+
+  @@index([agencyId])
+  @@index([status])
+}
+
+model Card {
+  id        String     @id @default(cuid())
+  maskedPan String
+  reference String     @unique
+  status    CardStatus @default(IN_STOCK)
+  lotId     String?
+  lot       Lot?       @relation(fields: [lotId], references: [id])
+  agencyId  String?
+  agency    Agency?    @relation(fields: [agencyId], references: [id])
+  origin    DataOrigin @default(USER)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  movements CardMovement[]
+
+  @@index([status])
+  @@index([lotId])
+  @@index([agencyId])
+}
+
+model CardMovement {
+  id         String           @id @default(cuid())
+  cardId     String
+  card       Card             @relation(fields: [cardId], references: [id])
+  type       CardMovementType
+  occurredAt DateTime         @default(now())
+  note       String?
+  actorId    String?
+  createdAt  DateTime         @default(now())
+
+  @@index([cardId, occurredAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  userId     String?
+  user       User?       @relation(fields: [userId], references: [id])
+  action     String
+  entity     String
+  entityId   String?
+  before     Json?
+  after      Json?
+  ip         String?
+  requestId  String?
+  result     AuditResult @default(SUCCESS)
+  createdAt  DateTime    @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+  @@index([userId])
+}
+
+model Configuration {
+  key       String   @id
+  value     Json
+  category  String   @default("general")
+  updatedAt DateTime @updatedAt
+}

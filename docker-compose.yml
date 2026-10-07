@@ -1,0 +1,48 @@
+# Desarrollo local: `cp .env.example .env` (edite las credenciales) y `docker compose up --build`
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bange}
+      POSTGRES_DB: ${POSTGRES_DB:-bange_agenda}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en .env}
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    ports:
+      - '127.0.0.1:5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-bange} -d ${POSTGRES_DB:-bange_agenda}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bange}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bange_agenda}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET en .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:3000:3000'
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - '8080:8080'
+
+volumes:
+  dbdata:
