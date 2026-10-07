@@ -128,10 +128,11 @@ describe('agencias y alcance de datos', () => {
 
   it('crea una agencia y deja rastro de auditoría', async () => {
     const s = await login('admin');
-    const res = await api(s).post('/agencies', { code: 'TST', name: 'Agencia Test' }).expect(201);
+    const code = `T${Date.now()}`.slice(0, 20);
+    const res = await api(s).post('/agencies', { code, name: 'Agencia Test' }).expect(201);
     const log = await prisma.auditLog.findFirst({ where: { action: 'agency.create', entityId: res.body.id } });
     expect(log?.userId).toBeTruthy();
-    expect(log?.after).toMatchObject({ code: 'TST' });
+    expect(log?.after).toMatchObject({ code });
   });
 });
 
@@ -268,11 +269,15 @@ describe('administración', () => {
     const target = await login('consulta');
     const user = await prisma.user.findUniqueOrThrow({ where: { username: 'consulta' } });
     const role = await prisma.role.findUniqueOrThrow({ where: { code: 'MANAGER' } });
-    await api(admin).patch(`/users/${user.id}`, { roleId: role.id }).expect(200);
-    await api(target).get('/auth/me').expect(401);
-    expect(await prisma.auditLog.count({ where: { action: 'user.role_change', entityId: user.id } })).toBe(1);
-    const viewer = await prisma.role.findUniqueOrThrow({ where: { code: 'VIEWER' } });
-    await api(admin).patch(`/users/${user.id}`, { roleId: viewer.id }).expect(200);
+    const before = await prisma.auditLog.count({ where: { action: 'user.role_change', entityId: user.id } });
+    try {
+      await api(admin).patch(`/users/${user.id}`, { roleId: role.id }).expect(200);
+      await api(target).get('/auth/me').expect(401);
+      expect(await prisma.auditLog.count({ where: { action: 'user.role_change', entityId: user.id } })).toBe(before + 1);
+    } finally {
+      // Restaura el rol original para que la BD de test siga siendo reutilizable.
+      await prisma.user.update({ where: { id: user.id }, data: { roleId: user.roleId } });
+    }
   });
 
   it('no permite editar roles de sistema', async () => {
@@ -295,7 +300,7 @@ describe('administración', () => {
   it('tarjetas: rechaza PAN completo y aplica el ciclo de vida', async () => {
     const s = await login('responsable');
     await api(s).post('/cards', { maskedPan: '4111111111111111', reference: 'T-1' }).expect(400);
-    const card = await api(s).post('/cards', { maskedPan: '4111 **** **** 1111', reference: 'T-OK' }).expect(201);
+    const card = await api(s).post('/cards', { maskedPan: '4111 **** **** 1111', reference: `T-OK-${Date.now()}` }).expect(201);
     await api(s).post(`/cards/${card.body.id}/movements`, { type: 'ACTIVATION' }).expect(409);
     await api(s).post(`/cards/${card.body.id}/movements`, { type: 'DISTRIBUTION' }).expect(400);
     const agency = await prisma.agency.findFirstOrThrow();
