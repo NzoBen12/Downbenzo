@@ -3,6 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import { randomBytes } from 'crypto';
 import { Response } from 'express';
 import { z } from 'zod';
+import { passwordSchema } from '../common/password';
 import { ZodPipe } from '../common/zod.pipe';
 import { loadEnv } from '../config/env';
 import type { Env } from '../config/env';
@@ -13,6 +14,8 @@ import { CSRF_COOKIE, SESSION_COOKIE } from './guards';
 
 const loginSchema = z.object({ identifier: z.string().min(1).max(200), password: z.string().min(1).max(200) });
 type LoginDto = z.infer<typeof loginSchema>;
+const changePasswordSchema = z.object({ currentPassword: z.string().min(1).max(200), newPassword: passwordSchema });
+type ChangePasswordDto = z.infer<typeof changePasswordSchema>;
 
 @Controller('auth')
 export class AuthController {
@@ -45,6 +48,21 @@ export class AuthController {
     await this.auth.revokeSessions(user.id);
     res.clearCookie(SESSION_COOKIE, { path: '/' });
     res.clearCookie(CSRF_COOKIE, { path: '/' });
+  }
+
+  @Post('change-password')
+  @HttpCode(204)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async changePassword(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodPipe(changePasswordSchema)) dto: ChangePasswordDto,
+    @Ctx() ctx: RequestContext,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const token = await this.auth.changePassword(user.id, dto.currentPassword, dto.newPassword, ctx);
+    res.cookie(SESSION_COOKIE, token, {
+      sameSite: 'strict', secure: this.env.COOKIE_SECURE, maxAge: this.env.JWT_EXPIRES_IN_MINUTES * 60_000, path: '/', httpOnly: true,
+    });
   }
 
   @Get('me')

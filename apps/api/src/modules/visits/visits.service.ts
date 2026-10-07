@@ -5,7 +5,7 @@ import { RequestContext } from '../../auth/auth.types';
 import { buildOrderBy, dateFilter, paginated } from '../../common/pagination';
 import { dataScope } from '../../common/scope';
 import { PrismaService } from '../../prisma/prisma.service';
-import { NOTIFICATION_SERVICE, NotificationService } from '../notifications/notifications';
+import { NOTIFICATION_SERVICE, NotificationService } from '../notifications/notification.tokens';
 import { CalendarQuery, VisitBody, VisitQuery, VisitStatusBody, VisitUpdate } from './visits.schemas';
 import { canTransition, isEditable } from './visit.rules';
 

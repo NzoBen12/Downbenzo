@@ -135,3 +135,15 @@ test('registra una venta de producto y crea un objetivo', async ({ page }) => {
   await goal.getByRole('button', { name: 'Guardar' }).click();
   await expect(page.getByText('Objetivo creado')).toBeVisible();
 });
+
+test('perfil: valida el formulario de cambio de contraseña', async ({ page }) => {
+  await login(page, 'consulta');
+  await page.getByRole('link', { name: /Usuario actual/ }).click();
+  await expect(page.getByRole('heading', { name: 'Mi perfil' })).toBeVisible();
+  await page.getByLabel('Contraseña actual').fill('x');
+  await page.getByLabel('Nueva contraseña', { exact: true }).fill('corta');
+  await page.getByLabel('Confirmar nueva contraseña').fill('otra');
+  await page.getByRole('button', { name: 'Actualizar contraseña' }).click();
+  await expect(page.getByText('Mínimo 12 caracteres')).toBeVisible();
+  await expect(page.getByText('Las contraseñas no coinciden')).toBeVisible();
+});

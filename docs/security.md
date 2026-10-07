@@ -5,6 +5,7 @@
 | Autenticación | `AuthProvider` (local con argon2id; corporativo = stub). Mensaje idéntico para usuario inexistente/clave errónea |
 | Sesión | JWT HS256 en cookie `HttpOnly`, `SameSite=Strict`, `Secure` configurable; expiración `JWT_EXPIRES_IN_MINUTES`; revocación por `tokenVersion` |
 | CSRF | Double-submit (`bange_csrf` + cabecera `X-CSRF-Token`) en mutaciones con cookie |
+| Contraseñas | Política ≥12 caracteres con mayúsculas/minúsculas/números; cambio propio exige la actual, invalida otras sesiones y se audita |
 | Fuerza bruta | Bloqueo tras `LOGIN_MAX_ATTEMPTS` (HTTP 423) + rate limit de login y global |
 | Autorización | RBAC con guard global en servidor + alcance de datos por agencia/gestor. El frontend sólo oculta por UX |
 | Entrada | Zod en body, query y params; paginación acotada; orden por lista blanca |

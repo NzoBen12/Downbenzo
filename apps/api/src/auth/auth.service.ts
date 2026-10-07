@@ -1,4 +1,5 @@
-import { Inject, Injectable, UnauthorizedException, HttpException, HttpStatus } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, UnauthorizedException, HttpException, HttpStatus } from '@nestjs/common';
+import * as argon2 from 'argon2';
 import * as jwt from 'jsonwebtoken';
 import { AuditService } from '../audit/audit.service';
 import { Env } from '../config/env';
@@ -89,6 +90,23 @@ export class AuthService {
       agencyId: u.agencyId ?? u.manager?.agencyId ?? null,
       managerId: u.manager?.id ?? null,
     };
+  }
+
+  /** Cambio de contraseña propio (proveedor local). Invalida el resto de sesiones y emite un token nuevo. */
+  async changePassword(userId: string, current: string, next: string, ctx: RequestContext) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.passwordHash) throw new BadRequestException('Esta cuenta no usa contraseña local');
+    if (!(await argon2.verify(user.passwordHash, current))) {
+      await this.audit.log(ctx, { action: 'auth.password_change', entity: 'User', entityId: userId, result: 'FAILURE' });
+      throw new UnauthorizedException('La contraseña actual no es correcta');
+    }
+    if (current === next) throw new BadRequestException('La nueva contraseña debe ser distinta de la actual');
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: await argon2.hash(next), tokenVersion: { increment: 1 } },
+    });
+    await this.audit.log(ctx, { action: 'auth.password_change', entity: 'User', entityId: userId });
+    return this.sign(updated.id, updated.tokenVersion);
   }
 
   /** Invalida todas las sesiones del usuario (logout / bloqueo / cambio de rol). */

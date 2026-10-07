@@ -7,16 +7,9 @@ import { AuthService } from '../../auth/auth.service';
 import { RequestContext } from '../../auth/auth.types';
 import { Ctx, RequirePermissions } from '../../auth/decorators';
 import { buildOrderBy, paginated, paginationSchema } from '../../common/pagination';
+import { passwordSchema } from '../../common/password';
 import { ZodPipe } from '../../common/zod.pipe';
 import { PrismaService } from '../../prisma/prisma.service';
-
-export const passwordSchema = z
-  .string()
-  .min(12, 'Mínimo 12 caracteres')
-  .max(128)
-  .regex(/[a-z]/, 'Debe incluir minúsculas')
-  .regex(/[A-Z]/, 'Debe incluir mayúsculas')
-  .regex(/\d/, 'Debe incluir números');
 
 const userBody = z.object({
   email: z.string().trim().toLowerCase().email(),

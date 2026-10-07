@@ -1,21 +1,9 @@
-import { Controller, Get, Global, Inject, Injectable, Module, Param, Post, Query } from '@nestjs/common';
+import { Controller, Get, Global, Injectable, Module, Param, Post, Query } from '@nestjs/common';
 import { AuthUser } from '../../auth/auth.types';
 import { CurrentUser, RequirePermissions } from '../../auth/decorators';
 import { PrismaService } from '../../prisma/prisma.service';
-
-export interface NotificationPayload {
-  userId: string;
-  type: string;
-  title: string;
-  body?: string;
-  link?: string;
-}
-
-/** Contrato desacoplado: la implementación interna guarda en BD; correo/push se conectan aquí. */
-export interface NotificationService {
-  notify(payload: NotificationPayload): Promise<void>;
-}
-export const NOTIFICATION_SERVICE = Symbol('NOTIFICATION_SERVICE');
+import { NOTIFICATION_SERVICE, NotificationPayload, NotificationService } from './notification.tokens';
+import { RemindersService } from './reminders.service';
 
 @Injectable()
 export class InternalNotificationService implements NotificationService {
@@ -56,9 +44,8 @@ export class NotificationsController {
 @Global()
 @Module({
   controllers: [NotificationsController],
-  providers: [{ provide: NOTIFICATION_SERVICE, useClass: InternalNotificationService }],
-  exports: [NOTIFICATION_SERVICE],
+  providers: [{ provide: NOTIFICATION_SERVICE, useClass: InternalNotificationService }, RemindersService],
+  exports: [NOTIFICATION_SERVICE, RemindersService],
 })
 export class NotificationsModule {}
 
-export const InjectNotifications = () => Inject(NOTIFICATION_SERVICE);

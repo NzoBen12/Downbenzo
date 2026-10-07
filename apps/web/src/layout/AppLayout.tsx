@@ -139,7 +139,7 @@ export function AppLayout() {
           <GlobalSearch />
           <span className="spacer" />
           <Notifications />
-          <span aria-label="Usuario actual" style={{ fontWeight: 600 }}>{user?.fullName}</span>
+          <Link to="/profile" aria-label="Usuario actual: mi perfil" style={{ fontWeight: 600 }}>{user?.fullName}</Link>
           <Button variant="secondary" size="sm" onClick={() => void logout()}>Salir</Button>
         </header>
         <main id="main" className="content" tabIndex={-1}>

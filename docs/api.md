@@ -8,7 +8,7 @@ Códigos: 400 validación/regla · 401 sin sesión · 403 sin permiso/CSRF · 40
 | Recurso | Endpoints | Permiso |
 |---|---|---|
 | Salud (sin prefijo) | `GET /health` `/ready` `/metrics` | público |
-| Auth | `POST /auth/login` `POST /auth/logout` `GET /auth/me` | login público |
+| Auth | `POST /auth/login` `POST /auth/logout` `GET /auth/me` `POST /auth/change-password` | login público |
 | Agencias | `GET /agencies` `/agencies/export?format=csv\|xlsx\|pdf` `/agencies/:id` · `POST` · `PATCH :id` · `POST :id/activate\|deactivate` · `DELETE :id` | `agencies.*` |
 | Gestores | `GET /managers` `/:id` · `POST` `PATCH` `DELETE` | `managers.*` |
 | Visitas | `GET /visits` `/visits/calendar?from&to` `/visits/export` `/visits/:id` · `POST` · `PATCH :id` · `POST :id/status` · `DELETE :id` | `visits.*` |
@@ -37,3 +37,9 @@ Estados finales no admiten cambios ni edición (409).
 `visits` (total, por estado, `successRate` = exitosas/(exitosas+sin éxito)), `products` (vendidos, no vendidos, DELTA, importe),
 `currency` (operaciones completadas y por moneda), `rankings` (gestores/agencias por visitas exitosas), `trend` (visitas/día).
 Todos respetan filtros y el alcance de datos del usuario.
+
+## Recordatorios
+
+Un job interno (cada 15 min; desactivable con `REMINDERS_ENABLED=false`) crea una notificación `visit.reminder` por visita planificada
+dentro de `visits.reminder_hours` (config, 24 por defecto) para el gestor con usuario asociado; sin duplicados.
+Es por instancia: con varias réplicas, ejecutar en una sola o usar un scheduler externo.

@@ -357,3 +357,45 @@ describe('productos, ventas, clientes y objetivos', () => {
     await api(s).post('/goals', { title: 'Bien', targetValue: 10, periodStart: new Date(now).toISOString(), periodEnd: new Date(now + 86_400_000).toISOString() }).expect(201);
   });
 });
+
+describe('cambio de contraseña propio', () => {
+  it('valida la actual, aplica política, invalida otras sesiones y se audita', async () => {
+    const admin = await login('superadmin');
+    const role = await prisma.role.findUniqueOrThrow({ where: { code: 'VIEWER' } });
+    const username = `pw${Date.now()}`.slice(0, 20);
+    const initial = 'Initial-Passw0rd-1';
+    await api(admin).post('/users', { email: `${username}@demo.bange.example`, username, fullName: 'PW Test', roleId: role.id, password: initial }).expect(201);
+
+    const a = await login(username, initial);
+    const b = await login(username, initial);
+    await api(a).post('/auth/change-password', { currentPassword: 'incorrecta-123', newPassword: 'Another-Passw0rd-2' }).expect(401);
+    await api(a).post('/auth/change-password', { currentPassword: initial, newPassword: 'corta' }).expect(400);
+    await api(a).post('/auth/change-password', { currentPassword: initial, newPassword: initial }).expect(400);
+
+    const ok = await api(a).post('/auth/change-password', { currentPassword: initial, newPassword: 'Another-Passw0rd-2' }).expect(204);
+    await api(b).get('/auth/me').expect(401); // otra sesión invalidada
+    const renewed: Session = { cookies: ok.headers['set-cookie'] as unknown as string[], csrf: a.csrf };
+    await api(renewed).get('/auth/me').expect(200); // la sesión actual continúa con token nuevo
+    await request(app.getHttpServer()).post('/api/v1/auth/login').send({ identifier: username, password: initial }).expect(401);
+    await login(username, 'Another-Passw0rd-2');
+    const user = await prisma.user.findUniqueOrThrow({ where: { username } });
+    expect(await prisma.auditLog.count({ where: { action: 'auth.password_change', entityId: user.id } })).toBe(2); // un fallo + un éxito
+  });
+});
+
+describe('recordatorios de visitas próximas', () => {
+  it('notifica una sola vez por visita y gestor', async () => {
+    const { RemindersService } = await import('../src/modules/notifications/reminders.service');
+    const reminders = app.get(RemindersService);
+    const manager = await prisma.manager.findFirstOrThrow({ where: { code: 'GE1' } });
+    const prospect = await prisma.prospect.create({ data: { fullName: 'Prospecto recordatorio' } });
+    const visit = await prisma.visit.create({
+      data: { scheduledAt: new Date(Date.now() + 3 * 3_600_000), agencyId: manager.agencyId, managerId: manager.id, prospectId: prospect.id },
+    });
+    await reminders.run();
+    await reminders.run();
+    const count = await prisma.notification.count({ where: { type: 'visit.reminder', link: `/visits/${visit.id}`, userId: manager.userId! } });
+    expect(count).toBe(1);
+    await prisma.visit.update({ where: { id: visit.id }, data: { deletedAt: new Date() } });
+  });
+});

@@ -14,6 +14,7 @@ import { LoginPage } from './pages/Login';
 import { ManagerDetailPage, ManagersPage } from './pages/Managers';
 import { ForbiddenPage, InformationPage, NotFoundPage, ReportsPage } from './pages/Misc';
 import { CardDetailPage, CardsPage, CurrencyPage, LotDetailPage, LotsPage } from './pages/Operations';
+import { ProfilePage } from './pages/Profile';
 import { ProspectDetailPage, ProspectsPage } from './pages/Prospects';
 import { VisitDetailPage, VisitsPage } from './pages/Visits';
 
@@ -64,6 +65,7 @@ export function App() {
                 <Route path="visits/:id" element={g('visits.read', <VisitDetailPage />)} />
                 <Route path="prospects" element={g('prospects.read', <ProspectsPage />)} />
                 <Route path="prospects/:id" element={g('prospects.read', <ProspectDetailPage />)} />
+                <Route path="profile" element={<ProfilePage />} />
                 <Route path="customers" element={g('customers.read', <CustomersPage />)} />
                 <Route path="products" element={g('products.read', <ProductsPage />)} />
                 <Route path="calendar" element={g('visits.read', <CalendarPage />)} />
