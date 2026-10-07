@@ -48,6 +48,7 @@ Usuarios demo (contraseña = `SEED_PASSWORD` o la impresa por el seed):
 |---|---|
 | `npm run db:migrate` | `prisma migrate deploy` (no destructivo) |
 | `npm run db:seed` | datos demo (idempotente: omite si ya hay agencias) |
+| `npm -w apps/api run db:seed:reference` | sólo roles y permisos (producción) |
 | `npm run db:reset` | `prisma migrate reset` — **destructivo**, sólo desarrollo, ejecútelo usted |
 | `npm run lint` / `typecheck` / `test` / `build` | calidad |
 | `npm -w apps/web run e2e` | E2E Playwright (requiere API compilada y BD de test) |

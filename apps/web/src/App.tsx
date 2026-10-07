@@ -7,6 +7,7 @@ import { LoadingState, ToastProvider } from './components/ui';
 import { AppLayout } from './layout/AppLayout';
 import { AgenciesPage, AgencyDetailPage } from './pages/Agencies';
 import { AuditPage, RolesPage, SettingsPage, UsersPage } from './pages/Admin';
+import { CustomersPage, ProductsPage } from './pages/Commercial';
 import { CalendarPage } from './pages/Calendar';
 import { DashboardPage } from './pages/Dashboard';
 import { LoginPage } from './pages/Login';
@@ -63,6 +64,8 @@ export function App() {
                 <Route path="visits/:id" element={g('visits.read', <VisitDetailPage />)} />
                 <Route path="prospects" element={g('prospects.read', <ProspectsPage />)} />
                 <Route path="prospects/:id" element={g('prospects.read', <ProspectDetailPage />)} />
+                <Route path="customers" element={g('customers.read', <CustomersPage />)} />
+                <Route path="products" element={g('products.read', <ProductsPage />)} />
                 <Route path="calendar" element={g('visits.read', <CalendarPage />)} />
                 <Route path="currency" element={g('currency.read', <CurrencyPage />)} />
                 <Route path="lots" element={g('lots.read', <LotsPage />)} />

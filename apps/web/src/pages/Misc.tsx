@@ -1,11 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, ApiError } from '../api/client';
 import { ActionItem, Goal, ReportData } from '../api/types';
-import { useAuth } from '../auth/AuthContext';
+import { Can, useAuth } from '../auth/AuthContext';
 import { ExportMenu, PageHead } from '../components/FilterBar';
-import { Badge, Card, DatePicker, EmptyState, ErrorState, Select, Skeleton, Tabs } from '../components/ui';
+import { Badge, Button, Card, DatePicker, EmptyState, ErrorState, Input, Modal, Select, Skeleton, Tabs, useToast } from '../components/ui';
 import { formatDate, formatNumber } from '../lib/format';
 import { useAgencyOptions, useManagerOptions } from '../lib/hooks';
 
@@ -52,10 +52,11 @@ export function InformationPage() {
   const [tab, setTab] = useState<InfoTab>('goals');
   const { can } = useAuth();
   const goals = useQuery({ queryKey: ['goals'], queryFn: () => api.get<Goal[]>('/goals'), enabled: tab === 'goals' && can('goals.read') });
+  const [creating, setCreating] = useState<'goal' | 'action' | null>(null);
   const actions = useQuery({ queryKey: ['actions'], queryFn: () => api.get<ActionItem[]>('/actions'), enabled: tab === 'actions' && can('actions.read') });
   return (
     <>
-      <PageHead title="Información" />
+      <PageHead title="Información" actions={<>{tab === 'goals' && <Can permission="goals.create"><Button onClick={() => setCreating('goal')}>Nuevo objetivo</Button></Can>}{tab === 'actions' && <Can permission="actions.create"><Button onClick={() => setCreating('action')}>Nueva acción</Button></Can>}</>} />
       <Tabs label="Información" value={tab} onChange={setTab} tabs={[{ id: 'goals', label: 'Objetivos' }, { id: 'actions', label: 'Acciones' }, { id: 'help', label: 'Ayuda' }]} />
       {tab === 'goals' && (goals.error ? <ErrorState error={goals.error} /> : !goals.data ? <Skeleton /> : goals.data.length === 0 ? <EmptyState title="Sin objetivos" /> : (
         <div className="grid cols-3">{goals.data.map((g) => {
@@ -66,7 +67,7 @@ export function InformationPage() {
         })}</div>
       ))}
       {tab === 'actions' && (actions.error ? <ErrorState error={actions.error} /> : !actions.data ? <Skeleton /> : (
-        <Card><ul className="plain">{actions.data.map((a) => <li key={a.id}>{a.title} {a.dueDate && <small>· vence {formatDate(a.dueDate)}</small>} <Badge tone={a.status === 'DONE' ? 'ok' : 'info'}>{a.status === 'DONE' ? 'Hecha' : a.status === 'CANCELLED' ? 'Cancelada' : 'Pendiente'}</Badge></li>)}</ul></Card>
+        <Card><ul className="plain">{actions.data.map((a) => <li key={a.id} className="row">{a.title} {a.dueDate && <small>· vence {formatDate(a.dueDate)}</small>} <Badge tone={a.status === 'DONE' ? 'ok' : 'info'}>{a.status === 'DONE' ? 'Hecha' : a.status === 'CANCELLED' ? 'Cancelada' : 'Pendiente'}</Badge> <ActionStatusButtons a={a} /></li>)}</ul></Card>
       ))}
       {tab === 'help' && (
         <Card title="Guía rápida">
@@ -79,8 +80,64 @@ export function InformationPage() {
           </ul>
         </Card>
       )}
+      {creating === 'goal' && <GoalForm onClose={() => setCreating(null)} />}
+      {creating === 'action' && <ActionForm onClose={() => setCreating(null)} />}
     </>
   );
+}
+
+function GoalForm({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [v, setV] = useState({ title: '', targetValue: '', periodStart: '', periodEnd: '' });
+  const save = useMutation({
+    mutationFn: () => api.post('/goals', { title: v.title, targetValue: Number(v.targetValue), periodStart: new Date(v.periodStart).toISOString(), periodEnd: new Date(`${v.periodEnd}T23:59:59`).toISOString() }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['goals'] }); toast.show('Objetivo creado', 'success'); onClose(); },
+    onError: (e) => toast.show(e instanceof ApiError ? e.message : 'Error', 'error'),
+  });
+  const valid = v.title.trim() && Number(v.targetValue) > 0 && v.periodStart && v.periodEnd && v.periodEnd >= v.periodStart;
+  return (
+    <Modal title="Nuevo objetivo" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={!valid} loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button></>}>
+      <div className="form-grid">
+        <Input label="Título" value={v.title} onChange={(e) => setV({ ...v, title: e.target.value })} />
+        <Input label="Valor objetivo" type="number" value={v.targetValue} onChange={(e) => setV({ ...v, targetValue: e.target.value })} />
+        <DatePicker label="Inicio" value={v.periodStart} onChange={(e) => setV({ ...v, periodStart: e.target.value })} />
+        <DatePicker label="Fin" value={v.periodEnd} onChange={(e) => setV({ ...v, periodEnd: e.target.value })} error={v.periodEnd && v.periodEnd < v.periodStart ? 'Debe ser posterior al inicio' : undefined} />
+      </div>
+    </Modal>
+  );
+}
+
+function ActionForm({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [title, setTitle] = useState('');
+  const [due, setDue] = useState('');
+  const save = useMutation({
+    mutationFn: () => api.post('/actions', { title, dueDate: due ? new Date(`${due}T23:59:59`).toISOString() : null }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['actions'] }); toast.show('Acción creada', 'success'); onClose(); },
+    onError: (e) => toast.show(e instanceof ApiError ? e.message : 'Error', 'error'),
+  });
+  return (
+    <Modal title="Nueva acción" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={!title.trim()} loading={save.isPending} onClick={() => save.mutate()}>Guardar</Button></>}>
+      <div className="form-grid">
+        <Input label="Título" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <DatePicker label="Vencimiento" value={due} onChange={(e) => setDue(e.target.value)} />
+      </div>
+    </Modal>
+  );
+}
+
+function ActionStatusButtons({ a }: { a: ActionItem }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const set = useMutation({
+    mutationFn: (status: string) => api.patch(`/actions/${a.id}`, { status }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['actions'] }),
+    onError: (e) => toast.show(e instanceof ApiError ? e.message : 'Error', 'error'),
+  });
+  if (a.status !== 'PENDING') return null;
+  return <Can permission="actions.update"><Button size="sm" variant="secondary" onClick={() => set.mutate('DONE')}>Marcar hecha</Button></Can>;
 }
 
 export function NotFoundPage() {

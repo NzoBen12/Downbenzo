@@ -15,7 +15,7 @@ const day = 86_400_000;
 
 async function main() {
   const password = process.env.SEED_PASSWORD ?? `Demo-${randomBytes(9).toString('base64url')}1a`;
-  const hash = await argon2.hash(password);
+  const hash = process.env.SEED_MODE === 'reference' ? '' : await argon2.hash(password);
 
   for (const code of ALL_PERMISSIONS) {
     await prisma.permission.upsert({ where: { code }, create: { code, description: code }, update: {} });
@@ -32,6 +32,11 @@ async function main() {
     roles[r.code] = role.id;
     await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
     await prisma.rolePermission.createMany({ data: r.permissions.map((p) => ({ roleId: role.id, permissionId: byCode.get(p)! })) });
+  }
+
+  if (process.env.SEED_MODE === 'reference') {
+    console.log('Seed de referencia completado: sólo roles y permisos (sin datos demo ni usuarios).');
+    return;
   }
 
   if ((await prisma.agency.count()) > 0) {

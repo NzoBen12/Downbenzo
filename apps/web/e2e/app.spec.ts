@@ -109,3 +109,29 @@ test('búsqueda global navega al detalle', async ({ page }) => {
   await page.getByRole('link', { name: /Agencia Luba/ }).first().click();
   await expect(page.getByRole('heading', { name: 'Agencia Luba' })).toBeVisible();
 });
+
+test('registra una venta de producto y crea un objetivo', async ({ page }) => {
+  await login(page, 'responsable');
+  await page.getByRole('link', { name: 'Productos' }).click();
+  await page.getByRole('button', { name: 'Registrar venta' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Registrar venta de producto' });
+  await dialog.getByLabel('Producto').selectOption({ index: 1 });
+  const when = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  await dialog.getByLabel('Fecha').fill(`${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}T09:00`);
+  await dialog.getByLabel('Agencia').selectOption({ label: 'Agencia Malabo' });
+  await dialog.getByLabel('Gestor').selectOption({ index: 1 });
+  await dialog.getByLabel('Importe').fill('250');
+  await dialog.getByRole('button', { name: 'Guardar' }).click();
+  await expect(page.getByText('Venta registrada')).toBeVisible();
+
+  await page.getByRole('link', { name: 'Información' }).click();
+  await page.getByRole('button', { name: 'Nuevo objetivo' }).click();
+  const goal = page.getByRole('dialog', { name: 'Nuevo objetivo' });
+  await goal.getByLabel('Título').fill(`Objetivo E2E ${Date.now()}`);
+  await goal.getByLabel('Valor objetivo').fill('50');
+  await goal.getByLabel('Inicio').fill('2026-01-01');
+  await goal.getByLabel('Fin').fill('2026-12-31');
+  await goal.getByRole('button', { name: 'Guardar' }).click();
+  await expect(page.getByText('Objetivo creado')).toBeVisible();
+});

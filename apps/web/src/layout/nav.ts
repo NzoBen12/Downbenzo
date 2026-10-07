@@ -10,6 +10,8 @@ export const NAV: NavGroup[] = [
       { to: '/managers', label: 'Gestores', icon: '👤', permission: 'managers.read' },
       { to: '/visits', label: 'Visitas', icon: '📋', permission: 'visits.read' },
       { to: '/prospects', label: 'No-clientes', icon: '🎯', permission: 'prospects.read' },
+      { to: '/customers', label: 'Clientes', icon: '🧑‍💼', permission: 'customers.read' },
+      { to: '/products', label: 'Productos', icon: '🛍', permission: 'products.read' },
       { to: '/calendar', label: 'Calendario', icon: '📅', permission: 'visits.read' },
     ],
   },

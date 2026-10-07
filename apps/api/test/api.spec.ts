@@ -312,3 +312,48 @@ describe('administración', () => {
     await request(app.getHttpServer()).get('/ready').expect(200);
   });
 });
+
+describe('productos, ventas, clientes y objetivos', () => {
+  it('registra una venta y la lista filtrada por producto', async () => {
+    const s = await login('responsable');
+    const manager = await prisma.manager.findFirstOrThrow({ where: { code: 'GE1' } });
+    const product = await prisma.product.findFirstOrThrow({ where: { isDelta: true } });
+    const created = await api(s).post('/sales', { productId: product.id, agencyId: manager.agencyId, managerId: manager.id, sold: true, amount: 125.5 }).expect(201);
+    const list = await api(s).get(`/sales?productId=${product.id}&pageSize=200`).expect(200);
+    expect(list.body.data.some((x: { id: string }) => x.id === created.body.id)).toBe(true);
+    expect(list.body.data.every((x: { product: { id: string } }) => x.product.id === product.id)).toBe(true);
+  });
+
+  it('rechaza ventas con gestor de otra agencia y importes negativos', async () => {
+    const s = await login('responsable');
+    const manager = await prisma.manager.findFirstOrThrow({ where: { code: 'GE1' } });
+    const other = await prisma.agency.findFirstOrThrow({ where: { id: { not: manager.agencyId } } });
+    const product = await prisma.product.findFirstOrThrow();
+    await api(s).post('/sales', { productId: product.id, agencyId: other.id, managerId: manager.id }).expect(400);
+    await api(s).post('/sales', { productId: product.id, agencyId: manager.agencyId, managerId: manager.id, amount: -1 }).expect(400);
+  });
+
+  it('el Gestor sólo puede registrar ventas propias', async () => {
+    const s = await login('gestor');
+    const mine = await prisma.manager.findFirstOrThrow({ where: { code: 'GE1' } });
+    const foreign = await prisma.manager.findFirstOrThrow({ where: { id: { not: mine.id } } });
+    const product = await prisma.product.findFirstOrThrow();
+    await api(s).post('/sales', { productId: product.id, agencyId: foreign.agencyId, managerId: foreign.id }).expect(400);
+    await api(s).post('/sales', { productId: product.id, agencyId: mine.agencyId, managerId: mine.id }).expect(201);
+  });
+
+  it('clientes: el Gestor no puede crear, el Responsable sí; el código es único', async () => {
+    const code = `C${Date.now()}`;
+    await api(await login('gestor')).post('/customers', { code, fullName: 'X' }).expect(403);
+    const s = await login('responsable');
+    await api(s).post('/customers', { code, fullName: 'Cliente Test' }).expect(201);
+    await api(s).post('/customers', { code, fullName: 'Duplicado' }).expect(409);
+  });
+
+  it('objetivos: valida que el periodo sea coherente', async () => {
+    const s = await login('responsable');
+    const now = Date.now();
+    await api(s).post('/goals', { title: 'Mal', targetValue: 10, periodStart: new Date(now).toISOString(), periodEnd: new Date(now - 86_400_000).toISOString() }).expect(400);
+    await api(s).post('/goals', { title: 'Bien', targetValue: 10, periodStart: new Date(now).toISOString(), periodEnd: new Date(now + 86_400_000).toISOString() }).expect(201);
+  });
+});

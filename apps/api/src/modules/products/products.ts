@@ -68,6 +68,9 @@ export class ProductsService {
       agencyId: scope.agencyId ?? q.agencyId,
       managerId: scope.managerId ?? q.managerId,
       ...(q.sold ? { sold: q.sold === 'true' } : {}),
+      ...(q.search
+        ? { OR: [{ product: { name: { contains: q.search, mode: 'insensitive' as const } } }, { manager: { fullName: { contains: q.search, mode: 'insensitive' as const } } }, { agency: { name: { contains: q.search, mode: 'insensitive' as const } } }] }
+        : {}),
     };
     const [data, total] = await Promise.all([
       this.prisma.productSale.findMany({
