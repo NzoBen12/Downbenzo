@@ -6,7 +6,7 @@ import { buildOrderBy, dateFilter, paginated } from '../../common/pagination';
 import { dataScope } from '../../common/scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NOTIFICATION_SERVICE, NotificationService } from '../notifications/notification.tokens';
-import { CalendarQuery, VisitBody, VisitQuery, VisitStatusBody, VisitUpdate } from './visits.schemas';
+import { CalendarQuery, ReassignBody, VisitBody, VisitQuery, VisitStatusBody, VisitUpdate } from './visits.schemas';
 import { canTransition, isEditable } from './visit.rules';
 
 const include = {
@@ -173,6 +173,33 @@ export class VisitsService {
       });
     }
     return after;
+  }
+
+  /**
+   * Reasignación en bloque, atómica: todas las visitas deben estar abiertas, en el alcance del usuario y
+   * pertenecer a la agencia del nuevo gestor. Un Gestor/a (alcance propio) no puede reasignar.
+   */
+  async reassign(b: ReassignBody, ctx: RequestContext) {
+    const scope = ctx.user ? dataScope(ctx.user) : {};
+    if (scope.managerId) throw new ForbiddenException('Su rol no permite reasignar visitas');
+    const ids = [...new Set(b.visitIds)];
+    const target = await this.prisma.manager.findFirst({ where: { id: b.managerId, deletedAt: null, isActive: true } });
+    if (!target) throw new BadRequestException('Gestor destino inexistente o inactivo');
+    const visits = await this.prisma.visit.findMany({ where: { id: { in: ids }, ...this.buildWhere({}, ctx) } });
+    if (visits.length !== ids.length) throw new NotFoundException('Alguna visita no existe o está fuera de su alcance');
+    const closed = visits.filter((v) => !isEditable(v.status));
+    if (closed.length) throw new ConflictException(`${closed.length} visita(s) ya cerradas no pueden reasignarse`);
+    if (visits.some((v) => v.agencyId !== target.agencyId)) throw new BadRequestException('El gestor destino no pertenece a la agencia de todas las visitas');
+
+    const toMove = visits.filter((v) => v.managerId !== target.id);
+    await this.prisma.visit.updateMany({ where: { id: { in: toMove.map((v) => v.id) } }, data: { managerId: target.id } });
+    for (const v of toMove) {
+      await this.audit.log(ctx, { action: 'visit.reassign', entity: 'Visit', entityId: v.id, before: { managerId: v.managerId }, after: { managerId: target.id } });
+    }
+    if (target.userId && toMove.length > 0 && target.userId !== ctx.user?.id) {
+      await this.notifications.notify({ userId: target.userId, type: 'visit.assigned', title: `${toMove.length} visita(s) reasignada(s) a usted`, link: '/visits' });
+    }
+    return { moved: toMove.length, unchanged: visits.length - toMove.length };
   }
 
   async remove(id: string, ctx: RequestContext) {

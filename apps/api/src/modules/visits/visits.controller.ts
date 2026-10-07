@@ -5,8 +5,8 @@ import { Ctx, RequirePermissions } from '../../auth/decorators';
 import { ZodPipe } from '../../common/zod.pipe';
 import { ExportFormat, ExportService } from '../../export/export.service';
 import {
-  CalendarQuery, VisitBody, VisitQuery, VisitStatusBody, VisitUpdate,
-  calendarQuery, visitBody, visitExportQuery, visitQuery, visitStatusBody, visitUpdate,
+  CalendarQuery, ReassignBody, VisitBody, VisitQuery, VisitStatusBody, VisitUpdate,
+  calendarQuery, reassignBody, visitBody, visitExportQuery, visitQuery, visitStatusBody, visitUpdate,
 } from './visits.schemas';
 import { VisitsService } from './visits.service';
 
@@ -52,6 +52,9 @@ export class VisitsController {
       notes: v.notes,
     })));
   }
+
+  @Post('reassign') @HttpCode(200) @RequirePermissions('visits.update')
+  reassign(@Body(new ZodPipe(reassignBody)) b: ReassignBody, @Ctx() ctx: RequestContext) { return this.service.reassign(b, ctx); }
 
   @Get(':id') @RequirePermissions('visits.read')
   get(@Param('id') id: string, @Ctx() ctx: RequestContext) { return this.service.get(id, ctx); }

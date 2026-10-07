@@ -57,3 +57,9 @@ export type VisitUpdate = z.infer<typeof visitUpdate>;
 export type VisitStatusBody = z.infer<typeof visitStatusBody>;
 export type VisitQuery = z.infer<typeof visitQuery>;
 export type CalendarQuery = z.infer<typeof calendarQuery>;
+
+export const reassignBody = z.object({
+  visitIds: z.array(z.string().min(1)).min(1).max(200),
+  managerId: z.string().min(1),
+});
+export type ReassignBody = z.infer<typeof reassignBody>;

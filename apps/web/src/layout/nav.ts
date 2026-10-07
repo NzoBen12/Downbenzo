@@ -2,7 +2,7 @@ export interface NavItem { to: string; label: string; icon: string; permission: 
 export interface NavGroup { group: string; items: NavItem[] }
 
 export const NAV: NavGroup[] = [
-  { group: 'General', items: [{ to: '/', label: 'Dashboard', icon: '▦', permission: 'dashboard.read' }] },
+  { group: 'General', items: [{ to: '/', label: 'Inicio', icon: '⌂', permission: 'dashboard.read' }, { to: '/dashboard', label: 'Dashboard', icon: '▦', permission: 'dashboard.read' }] },
   {
     group: 'Comercial',
     items: [

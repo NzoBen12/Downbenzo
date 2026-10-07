@@ -11,7 +11,7 @@ Códigos: 400 validación/regla · 401 sin sesión · 403 sin permiso/CSRF · 40
 | Auth | `POST /auth/login` `POST /auth/logout` `GET /auth/me` `POST /auth/change-password` | login público |
 | Agencias | `GET /agencies` `/agencies/export?format=csv\|xlsx\|pdf` `/agencies/:id` · `POST` · `PATCH :id` · `POST :id/activate\|deactivate` · `DELETE :id` | `agencies.*` |
 | Gestores | `GET /managers` `/:id` · `POST` `PATCH` `DELETE` | `managers.*` |
-| Visitas | `GET /visits` `/visits/calendar?from&to` `/visits/export` `/visits/:id` · `POST` · `PATCH :id` · `POST :id/status` · `DELETE :id` | `visits.*` |
+| Visitas | `GET /visits` `/visits/calendar?from&to` `/visits/export` `/visits/:id` · `POST` · `PATCH :id` · `POST :id/status` · `POST /visits/reassign` (bloque, atómico, máx. 200; no para rol Gestor) · `DELETE :id` | `visits.*` |
 | Prospectos / Clientes | `GET/POST/PATCH/DELETE /prospects` · `GET/POST/PATCH /customers` | `prospects.*` `customers.*` |
 | Productos / Ventas | `GET/POST/PATCH /products` · `GET/POST /sales` | `products.*` `sales.*` |
 | Divisas | `GET/POST /currency-operations` `PATCH :id` `GET /export` | `currency.*` |

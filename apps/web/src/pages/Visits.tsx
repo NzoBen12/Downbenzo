@@ -105,15 +105,41 @@ export function VisitStatusDialog({ visit, action, onClose }: { visit: Visit; ac
   );
 }
 
+function ReassignDialog({ visits, onClose, onDone }: { visits: Visit[]; onClose: () => void; onDone: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const agencyIds = [...new Set(visits.map((v) => v.agencyId))];
+  const managers = useManagerOptions(agencyIds.length === 1 ? agencyIds[0] : undefined);
+  const [managerId, setManagerId] = useState('');
+  const save = useMutation({
+    mutationFn: () => api.post<{ moved: number; unchanged: number }>('/visits/reassign', { visitIds: visits.map((v) => v.id), managerId }),
+    onSuccess: (r) => { void qc.invalidateQueries(); toast.show(`${r.moved} visita(s) reasignada(s)`, 'success'); onDone(); },
+    onError: (e) => toast.show(e instanceof ApiError ? e.message : 'Error', 'error'),
+  });
+  return (
+    <Modal title={`Reasignar ${visits.length} visita(s)`} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={!managerId || agencyIds.length !== 1} loading={save.isPending} onClick={() => save.mutate()}>Reasignar</Button></>}>
+      {agencyIds.length !== 1 ? <p role="alert">Las visitas seleccionadas pertenecen a distintas agencias. Filtre por agencia y seleccione de nuevo.</p> : (
+        <Select label="Nuevo gestor" placeholder="Seleccione…" value={managerId} onChange={(e) => setManagerId(e.target.value)}>{managers.map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}</Select>
+      )}
+    </Modal>
+  );
+}
+
 export function VisitsPage() {
   const ls = useListState(['status', 'agencyId', 'managerId', 'from', 'to'], { sortBy: 'scheduledAt', sortDir: 'desc' });
   const { data, isLoading, error, refetch } = useList<Visit>('visits', '/visits', ls.params);
   const agencies = useAgencyOptions();
   const managers = useManagerOptions(ls.filter('agencyId') || undefined);
   const [editing, setEditing] = useState<Visit | 'new' | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [reassigning, setReassigning] = useState(false);
+  const { user } = useAuth();
+  const canReassign = Boolean(user?.permissions.includes('visits.update')) && user?.roleCode !== 'MANAGER';
+  const selectedVisits = (data?.data ?? []).filter((v) => selected.includes(v.id));
+  const reassignable = selectedVisits.length > 0 && selectedVisits.every((v) => v.status === 'PLANNED' || v.status === 'DEFERRED');
   return (
     <>
-      <PageHead title="Gestión de visitas" actions={<Can permission="visits.create"><Button onClick={() => setEditing('new')}>Nueva visita</Button></Can>} />
+      <PageHead title="Gestión de visitas" actions={<>{canReassign && <Button variant="secondary" disabled={!reassignable} onClick={() => setReassigning(true)} title={reassignable ? undefined : 'Seleccione visitas planificadas o diferidas'}>Reasignar ({selected.length})</Button>}<Can permission="visits.create"><Button onClick={() => setEditing('new')}>Nueva visita</Button></Can></>} />
       <FilterBar search={ls.search} onSearch={ls.setSearch} exportPath="/visits/export" exportParams={ls.params}>
         <Select label="Estado" value={ls.filter('status')} onChange={(e) => ls.setFilter('status', e.target.value)} placeholder="Todos">{Object.entries(VISIT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</Select>
         <Select label="Agencia" value={ls.filter('agencyId')} onChange={(e) => ls.setFilter('agencyId', e.target.value)} placeholder="Todas">{agencies.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</Select>
@@ -123,6 +149,7 @@ export function VisitsPage() {
       </FilterBar>
       <DataTable<Visit> caption="Listado de visitas" result={data} isLoading={isLoading} error={error} onRetry={() => void refetch()}
         page={ls.page} pageSize={ls.pageSize} onPage={ls.setPage} onPageSize={ls.setPageSize} sortBy={ls.sortBy} sortDir={ls.sortDir} onSort={ls.toggleSort}
+        selected={canReassign ? selected : undefined} onSelect={canReassign ? setSelected : undefined}
         columns={[
           { key: 'scheduledAt', header: 'Fecha', sortable: true, render: (v) => <Link to={`/visits/${v.id}`}>{formatDateTime(v.scheduledAt)}</Link> },
           { key: 'status', header: 'Estado', sortable: true, render: (v) => <StatusBadge status={v.status} /> },
@@ -132,6 +159,7 @@ export function VisitsPage() {
         ]}
         rowActions={(v) => <Can permission="visits.update">{ALLOWED[v.status] && <Button size="sm" variant="secondary" onClick={() => setEditing(v)}>Editar</Button>}</Can>} />
       {editing && <VisitForm visit={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
+      {reassigning && <ReassignDialog visits={selectedVisits} onClose={() => setReassigning(false)} onDone={() => { setReassigning(false); setSelected([]); }} />}
     </>
   );
 }

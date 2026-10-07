@@ -147,3 +147,31 @@ test('perfil: valida el formulario de cambio de contraseña', async ({ page }) =
   await expect(page.getByText('Mínimo 12 caracteres')).toBeVisible();
   await expect(page.getByText('Las contraseñas no coinciden')).toBeVisible();
 });
+
+test('el gestor ve su panel "Mi actividad" y no puede reasignar', async ({ page }) => {
+  await login(page, 'gestor');
+  await expect(page.getByRole('heading', { name: /^Hola,/ })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Visitas hoy' })).toBeVisible();
+  await page.getByRole('link', { name: 'Visitas', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Reasignar/ })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Dashboard' }).click();
+  await expect(page.getByRole('group', { name: 'Total visitas' })).toBeVisible();
+});
+
+test('reasigna visitas seleccionadas a otro gestor de la misma agencia', async ({ page }) => {
+  await login(page, 'responsable');
+  await page.goto('/visits?status=PLANNED');
+  const table = page.getByRole('table', { name: 'Listado de visitas' });
+  await expect(table.getByRole('row').nth(1)).toBeVisible();
+  const reassign = page.getByRole('button', { name: /Reasignar/ });
+  await expect(reassign).toBeDisabled();
+  await table.getByRole('checkbox', { name: 'Seleccionar fila' }).first().check();
+  await expect(reassign).toBeEnabled();
+  await reassign.click();
+  const dialog = page.getByRole('dialog', { name: /Reasignar 1 visita/ });
+  const options = await dialog.getByLabel('Nuevo gestor').locator('option').allTextContents();
+  if (options.length < 2) test.skip(true, 'La agencia de la visita seleccionada sólo tiene un gestor');
+  await dialog.getByLabel('Nuevo gestor').selectOption({ index: 1 });
+  await dialog.getByRole('button', { name: 'Reasignar' }).click();
+  await expect(page.getByText('visita(s) reasignada(s)')).toBeVisible();
+});

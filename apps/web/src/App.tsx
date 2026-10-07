@@ -14,6 +14,7 @@ import { LoginPage } from './pages/Login';
 import { ManagerDetailPage, ManagersPage } from './pages/Managers';
 import { ForbiddenPage, InformationPage, NotFoundPage, ReportsPage } from './pages/Misc';
 import { CardDetailPage, CardsPage, CurrencyPage, LotDetailPage, LotsPage } from './pages/Operations';
+import { MyActivityPage } from './pages/MyActivity';
 import { ProfilePage } from './pages/Profile';
 import { ProspectDetailPage, ProspectsPage } from './pages/Prospects';
 import { VisitDetailPage, VisitsPage } from './pages/Visits';
@@ -43,7 +44,8 @@ function Guard({ permission, children }: { permission: string; children: ReactNo
 const g = (permission: string, el: ReactNode) => <Guard permission={permission}>{el}</Guard>;
 
 function Home() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  if (user?.managerId && can('visits.read')) return <MyActivityPage />;
   return can('dashboard.read') ? <DashboardPage /> : <InformationPage />;
 }
 
@@ -65,6 +67,7 @@ export function App() {
                 <Route path="visits/:id" element={g('visits.read', <VisitDetailPage />)} />
                 <Route path="prospects" element={g('prospects.read', <ProspectsPage />)} />
                 <Route path="prospects/:id" element={g('prospects.read', <ProspectDetailPage />)} />
+                <Route path="dashboard" element={g('dashboard.read', <DashboardPage />)} />
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="customers" element={g('customers.read', <CustomersPage />)} />
                 <Route path="products" element={g('products.read', <ProductsPage />)} />

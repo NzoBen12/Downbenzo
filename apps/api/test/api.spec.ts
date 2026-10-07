@@ -399,3 +399,30 @@ describe('recordatorios de visitas próximas', () => {
     await prisma.visit.update({ where: { id: visit.id }, data: { deletedAt: new Date() } });
   });
 });
+
+describe('reasignación de visitas en bloque', () => {
+  const future = () => new Date(Date.now() + 6 * 86_400_000).toISOString();
+
+  it('reasigna de forma atómica y audita; rechaza agencia distinta, cerradas y rol Gestor', async () => {
+    const s = await login('responsable');
+    const [m1, m2] = await prisma.manager.findMany({ where: { agencyId: (await prisma.manager.findFirstOrThrow({ where: { code: 'GE1' } })).agencyId, deletedAt: null }, take: 2 });
+    // Garantiza un segundo gestor en la misma agencia.
+    const target = m2 ?? (await prisma.manager.create({ data: { code: `GX${Date.now()}`.slice(0, 20), fullName: 'Gestor Extra', agencyId: m1.agencyId } }));
+    const prospect = await prisma.prospect.findFirstOrThrow();
+    const v1 = (await api(s).post('/visits', { scheduledAt: future(), agencyId: m1.agencyId, managerId: m1.id, prospectId: prospect.id }).expect(201)).body.id;
+    const v2 = (await api(s).post('/visits', { scheduledAt: future(), agencyId: m1.agencyId, managerId: m1.id, prospectId: prospect.id }).expect(201)).body.id;
+
+    const res = await api(s).post('/visits/reassign', { visitIds: [v1, v2], managerId: target.id }).expect(200);
+    expect(res.body).toEqual({ moved: 2, unchanged: 0 });
+    expect((await prisma.visit.findUniqueOrThrow({ where: { id: v1 } })).managerId).toBe(target.id);
+    expect(await prisma.auditLog.count({ where: { action: 'visit.reassign', entityId: { in: [v1, v2] } } })).toBe(2);
+
+    const otherAgencyManager = await prisma.manager.findFirstOrThrow({ where: { agencyId: { not: m1.agencyId } } });
+    await api(s).post('/visits/reassign', { visitIds: [v1], managerId: otherAgencyManager.id }).expect(400);
+    await api(s).post(`/visits/${v1}/status`, { status: 'CANCELLED' }).expect(200);
+    await api(s).post('/visits/reassign', { visitIds: [v1, v2], managerId: m1.id }).expect(409);
+    expect((await prisma.visit.findUniqueOrThrow({ where: { id: v2 } })).managerId).toBe(target.id); // sin cambios parciales
+    await api(await login('gestor')).post('/visits/reassign', { visitIds: [v2], managerId: m1.id }).expect(403);
+    await api(s).post('/visits/reassign', { visitIds: [], managerId: m1.id }).expect(400);
+  });
+});
